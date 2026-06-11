@@ -63,7 +63,10 @@ function render() {
 
 // ---- matches tab -------------------------------------------------------------
 
+let PROJ = {}; // projected R32 bracket from the viewer's own group predictions
+
 function renderMatches(views) {
+  PROJ = projectBracket(me());
   const rounds = ["ALL", "G1", "G2", "G3", "R32", "R16", "QF", "SF", "FIN"];
   const filtered = ROUND_FILTER === "ALL" ? views : views.filter(v => roundKey(v) === ROUND_FILTER);
   const mine = State.pred[me()];
@@ -119,7 +122,16 @@ function matchCard(v) {
   let bottom = "";
   if (!v.started) {
     if (v.isTBD) {
-      bottom = `<div class="tbd-note">Teams not decided yet — come back later</div>`;
+      const p = v.stage === "R32" ? PROJ[v.id] : null;
+      if (p && (p.home || p.away)) {
+        const side = tid => tid ? `${flagImg(TEAMS[tid], "flag sm")} <b>${esc(TEAMS[tid].name)}</b>` : `<span class="dim">?</span>`;
+        bottom = `<div class="proj">📋 Your projection: ${side(p.home)} <span class="dim">vs</span> ${side(p.away)}</div>
+          <div class="opp-hint">Based on your group picks — the real tie appears when the groups finish, then you lock in your knockout pick.</div>`;
+      } else if (v.stage === "R32") {
+        bottom = `<div class="tbd-note">📋 Predict all matches of the feeding groups${v.away.abbrev === "3RD" ? " (all 12 groups for third-place slots)" : ""} to see your projected tie here.</div>`;
+      } else {
+        bottom = `<div class="tbd-note">Teams not decided yet — come back later</div>`;
+      }
     } else if (v.stage === "GROUP") {
       bottom = `<div class="seg" data-match="${v.id}">
         <button class="${myPick === "H" ? "on" : ""}" data-pick="H">1 · ${esc(v.home.abbrev)}</button>
@@ -132,8 +144,10 @@ function matchCard(v) {
         <button class="${myPick === v.away.id ? "on" : ""}" data-pick="${esc(v.away.id)}">${esc(v.away.abbrev || v.away.name)} wins</button>
       </div>`;
     }
-    const oppHint = oppPick != null ? `🙈 ${USER_META[o].name} has picked — revealed at kickoff` : `⏳ ${USER_META[o].name} hasn't picked yet`;
-    bottom += `<div class="opp-hint">${oppHint}</div>`;
+    if (!v.isTBD) {
+      const oppHint = oppPick != null ? `🙈 ${USER_META[o].name} has picked — revealed at kickoff` : `⏳ ${USER_META[o].name} hasn't picked yet`;
+      bottom += `<div class="opp-hint">${oppHint}</div>`;
+    }
   } else {
     const rows = [u, o].map(p => {
       const pk = State.pred[p][v.id];
@@ -328,6 +342,7 @@ function renderRules() {
     <li>⭐ <b>Banker:</b> in every round (each group matchday, R32, R16, QF, SF, final weekend) mark ONE match as your banker — its points are <b>doubled</b>. Yes, a banker won on penalties pays ×4.</li>
     <li>👑 <b>Champion pick:</b> before the knockouts begin, pick the World Champion — <b>+10 pts</b>.</li>
     <li>🥇 <b>Top scorer pick:</b> before the knockouts, name the tournament top scorer — <b>+5 pts</b>.</li>
+    <li>📋 <b>Projected bracket:</b> until the real qualifiers are known, knockout fixtures show YOUR projected teams, shaped from your own group picks via the official bracket. It's a preview only — actual knockout picks open once teams are confirmed, and you can adjust them up to each kickoff.</li>
     <li>🔒 Every pick locks at kickoff. No edits, no excuses.</li>
     <li>🙈 You can't see each other's pick until the match kicks off.</li>
     <li>✏️ Dad is the referee: he can correct a result if the data feed gets one wrong (visible to both as “corrected”).</li>

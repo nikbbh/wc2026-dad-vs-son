@@ -113,6 +113,90 @@ function form(user, views, n = 5) {
   return graded.slice(-n).map(v => gradeMatch(user, v).correct);
 }
 
+// ---------------------------------------------------------------------------
+// Bracket projection — shapes the official R32 bracket from the user's OWN
+// group-stage predictions, until the real teams are confirmed.
+// ---------------------------------------------------------------------------
+
+// Predicted final table of one group from the user's 1/X/2 picks.
+// Returns null until the user has predicted all 6 matches of the group.
+// Tiebreaks (simplified, goals are unknown): points → predicted head-to-head
+// → the user's explicit qualifier pick → alphabetical.
+function predictedTable(user, letter) {
+  const ms = SCHEDULE.filter(m => m.stage === "GROUP" && m.group === letter);
+  const pts = {}, beat = {};
+  for (const t of Object.values(TEAMS)) if (t.group === letter) pts[t.id] = 0;
+  for (const m of ms) {
+    const p = State.pred[user][m.id];
+    if (!p) return null;
+    if (p === "H") { pts[m.home.id] += 3; (beat[m.home.id] = beat[m.home.id] || new Set()).add(m.away.id); }
+    else if (p === "A") { pts[m.away.id] += 3; (beat[m.away.id] = beat[m.away.id] || new Set()).add(m.home.id); }
+    else { pts[m.home.id] += 1; pts[m.away.id] += 1; }
+  }
+  const qp = State.quals[user][letter] || [];
+  const order = Object.keys(pts).sort((a, b) =>
+    pts[b] - pts[a]
+    || ((beat[b] && beat[b].has(a)) ? 1 : 0) - ((beat[a] && beat[a].has(b)) ? 1 : 0)
+    || (qp.includes(b) ? 1 : 0) - (qp.includes(a) ? 1 : 0)
+    || TEAMS[a].name.localeCompare(TEAMS[b].name));
+  return { order, pts };
+}
+
+// matchId -> {home, away} of projected team ids for R32 matches (sides may be
+// null where the projection isn't possible yet).
+function projectBracket(user) {
+  const winners = {}, runners = {}, thirds = [];
+  const letters = [...new Set(Object.values(TEAMS).map(t => t.group))];
+  let allGroupsDone = true;
+  for (const L of letters) {
+    const t = predictedTable(user, L);
+    if (!t) { allGroupsDone = false; continue; }
+    winners[L] = t.order[0];
+    runners[L] = t.order[1];
+    thirds.push({ id: t.order[2], group: L, pts: t.pts[t.order[2]] });
+  }
+  // Best 8 thirds are only knowable once every group is fully predicted.
+  const thirdByGroup = {};
+  if (allGroupsDone) {
+    thirds.sort((a, b) => b.pts - a.pts || TEAMS[a.id].name.localeCompare(TEAMS[b.id].name));
+    const qualified = thirds.slice(0, 8);
+    // Assign thirds to slots honoring each slot's allowed-groups list (backtracking).
+    const slots = [];
+    for (const m of SCHEDULE.filter(x => x.stage === "R32")) {
+      for (const side of ["home", "away"]) {
+        if (m[side].abbrev !== "3RD") continue;
+        const g = /Group ([A-L/]+)/.exec(m[side].name);
+        slots.push({ key: m.id + ":" + side, allowed: new Set(g ? g[1].split("/") : []) });
+      }
+    }
+    slots.sort((a, b) => a.allowed.size - b.allowed.size);
+    const used = new Set(), assign = {};
+    (function bt(i) {
+      if (i === slots.length) return true;
+      for (const t of qualified) {
+        if (used.has(t.group) || !slots[i].allowed.has(t.group)) continue;
+        used.add(t.group); assign[slots[i].key] = t.id;
+        if (bt(i + 1)) return true;
+        used.delete(t.group); delete assign[slots[i].key];
+      }
+      return false;
+    })(0);
+    for (const [key, tid] of Object.entries(assign)) thirdByGroup[key] = tid;
+  }
+  const proj = {};
+  for (const m of SCHEDULE.filter(x => x.stage === "R32")) {
+    const side = (s, key) => {
+      const ab = m[s].abbrev;
+      if (/^1[A-L]$/.test(ab)) return winners[ab[1]] || null;
+      if (/^2[A-L]$/.test(ab)) return runners[ab[1]] || null;
+      if (ab === "3RD") return thirdByGroup[key] || null;
+      return null;
+    };
+    proj[m.id] = { home: side("home", m.id + ":home"), away: side("away", m.id + ":away") };
+  }
+  return proj;
+}
+
 // Disagreement stats: matches where picks differ, and who won them.
 function disagreements(views) {
   let total = 0, dad = 0, son = 0;

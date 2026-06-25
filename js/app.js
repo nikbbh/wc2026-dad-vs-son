@@ -5,8 +5,17 @@
 
 let TAB = "matches";
 let ROUND_FILTER = "ALL";
-let scrolledToCurrent = false;
-let FOCUS_MID = null; // id of the "current" match to scroll to on first open
+let FOCUS_MID = null;        // id of the "current" match to scroll to on open
+let autoScrolledOnce = false; // gates the one-time highlight flash
+let userInteracted = false;   // once true, we stop auto-positioning the feed
+
+// Don't let the browser restore a stale scroll position on relaunch (notably
+// iOS home-screen standalone apps); we position the feed ourselves.
+if ("scrollRestoration" in history) history.scrollRestoration = "manual";
+
+// A genuine user gesture means "hands off" — stop forcing the feed position.
+["touchstart", "wheel", "keydown", "mousedown"].forEach(ev =>
+  window.addEventListener(ev, () => { userInteracted = true; }, { passive: true, capture: true }));
 
 // The match worth jumping to: one in progress, else the next to kick off,
 // else the most recent (tournament over). `list` is sorted by date.
@@ -16,6 +25,26 @@ function currentMatchId(list) {
   const next = list.find(v => !v.started);
   if (next) return next.id;
   return list.length ? list[list.length - 1].id : null;
+}
+
+// Position the matches feed on the current match. Runs after every render
+// (until the user takes over) so a late data load that rebuilds the feed
+// can't strand it at the top. Double-rAF waits for layout to settle.
+function autoScrollToCurrent() {
+  if (userInteracted || TAB !== "matches" || !FOCUS_MID) return;
+  const go = () => {
+    if (userInteracted) return;
+    const el = document.getElementById("match-" + FOCUS_MID);
+    if (!el) return;
+    el.scrollIntoView({ block: "start" });
+    if (!autoScrolledOnce) {
+      autoScrolledOnce = true;
+      el.classList.add("focus-flash");
+      setTimeout(() => el.classList.remove("focus-flash"), 1800);
+    }
+  };
+  go();               // layout is ready right after innerHTML is set
+  setTimeout(go, 90); // re-assert once more after any async settle
 }
 
 const $ = (sel, el = document) => el.querySelector(sel);
@@ -65,15 +94,7 @@ function render() {
   else if (TAB === "score") view.innerHTML = renderScore(views);
   else view.innerHTML = renderRules();
 
-  if (TAB === "matches" && !scrolledToCurrent && FOCUS_MID) {
-    scrolledToCurrent = true;
-    const el = document.getElementById("match-" + FOCUS_MID);
-    if (el) setTimeout(() => {
-      el.scrollIntoView({ block: "start" });
-      el.classList.add("focus-flash");
-      setTimeout(() => el.classList.remove("focus-flash"), 1800);
-    }, 60);
-  }
+  autoScrollToCurrent();
 }
 
 // ---- matches tab -------------------------------------------------------------

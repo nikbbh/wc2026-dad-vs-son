@@ -48,6 +48,37 @@ body {
 }
 #tabs button span { font-size: 1.25rem; }
 #tabs button.active { color: var(--gold); }
+#tabs button.bday-tab { color: var(--gold); }
+#tabs button.bday-tab span { animation: bdaybounce 1.6s ease-in-out infinite; }
+@keyframes bdaybounce { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-3px); } }
+
+/* birthday surprise screen */
+.bday-screen {
+  position: relative; border-radius: 18px; overflow: hidden;
+  background: #0b1d33; border: 1px solid #28466e;
+  min-height: calc(100vh - 190px);
+}
+#bday-canvas { position: absolute; inset: 0; width: 100%; height: 100%; }
+.bday-content {
+  position: relative; z-index: 2; display: flex; flex-direction: column;
+  align-items: center; text-align: center; padding: 30px 22px 36px;
+}
+.bday-title { color: var(--text); font-size: 1.5rem; font-weight: 800; line-height: 1.25; }
+.bday-numwrap { animation: bdayfloat 3.4s ease-in-out infinite; margin: 16px 0 2px; }
+.bday-num {
+  font-size: 6.5rem; font-weight: 900; color: var(--gold); line-height: 1;
+  text-shadow: 0 0 26px rgba(251,191,36,.55);
+  animation: bdaypop .9s cubic-bezier(.2,.8,.2,1.25) both;
+}
+.bday-years { color: var(--dim); font-size: .82rem; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; margin-bottom: 18px; }
+.bday-msg { color: #dce8f6; font-size: 1rem; line-height: 1.6; margin: 0 2px 18px; max-width: 320px; }
+.bday-sign { color: var(--son); font-size: 1rem; font-weight: 800; margin-bottom: 24px; }
+.bday-replay {
+  background: var(--blue); color: #06121f; border: none; border-radius: 12px;
+  padding: 12px 24px; font-size: .95rem; font-weight: 800;
+}
+@keyframes bdaypop { 0% { transform: scale(.2); opacity: 0; } 60% { transform: scale(1.18); opacity: 1; } 100% { transform: scale(1); } }
+@keyframes bdayfloat { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-6px); } }
 
 /* cards */
 .card {

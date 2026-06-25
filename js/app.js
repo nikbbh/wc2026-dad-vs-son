@@ -83,18 +83,110 @@ function render() {
   dot.className = "sync-dot " + (sbConfigured() ? (syncStatus === "error" ? "err" : syncStatus === "syncing" ? "busy" : "ok") : "off");
   dot.title = sbConfigured() ? "Sync: " + syncStatus : "Local mode — sync not configured yet";
 
+  ensureBirthdayTab();
   document.querySelectorAll("#tabs button").forEach(b => b.classList.toggle("active", b.dataset.tab === TAB));
 
   const view = $("#view");
   if (!u) { view.innerHTML = ""; showProfileModal(true); return; }
   const views = allMatches();
-  if (TAB === "matches") view.innerHTML = renderMatches(views);
+  if (TAB === "bday") view.innerHTML = renderBirthday();
+  else if (TAB === "matches") view.innerHTML = renderMatches(views);
   else if (TAB === "groups") view.innerHTML = renderGroups(views);
   else if (TAB === "bonus") view.innerHTML = renderBonus(views);
   else if (TAB === "score") view.innerHTML = renderScore(views);
   else view.innerHTML = renderRules();
 
+  if (TAB === "bday") startBirthdayAnim(); else stopBirthdayAnim();
   autoScrollToCurrent();
+}
+
+// ---- birthday surprise (June 27, 2026) --------------------------------------
+
+// Active only on the son's birthday. `?bday` in the URL forces it on for a preview.
+function isBirthday() {
+  if (location.search.indexOf("bday") !== -1) return true;
+  const d = new Date();
+  return d.getFullYear() === 2026 && d.getMonth() === 5 && d.getDate() === 27;
+}
+
+function ensureBirthdayTab() {
+  const tabs = document.getElementById("tabs");
+  let btn = tabs.querySelector('[data-tab="bday"]');
+  if (isBirthday()) {
+    if (!btn) {
+      btn = document.createElement("button");
+      btn.dataset.tab = "bday";
+      btn.className = "bday-tab";
+      btn.innerHTML = "<span>🎉</span>67";
+      tabs.appendChild(btn);
+    }
+  } else if (btn) {
+    btn.remove();
+    if (TAB === "bday") TAB = "matches";
+  }
+}
+
+function renderBirthday() {
+  return `<div class="bday-screen">
+    <canvas id="bday-canvas"></canvas>
+    <div class="bday-content">
+      <div class="bday-title">С Днём Рождения,<br>сынок! 🎂</div>
+      <div class="bday-numwrap"><div id="bday-num" class="bday-num">12</div></div>
+      <div class="bday-years">полных лет</div>
+      <p class="bday-msg">Сегодня тебе целых 12. Ты — самое лучшее, что есть в моей жизни, и я горжусь тобой каждый день. Расти смелым, добрым и счастливым, и пусть сбываются все твои мечты. Я всегда рядом и всегда тебя люблю. 💙</p>
+      <div class="bday-sign">Твой папа 💙</div>
+      <button class="bday-replay" id="bday-replay">🎉 Повторить салют</button>
+    </div>
+  </div>`;
+}
+
+let bdayRAF = null;
+function stopBirthdayAnim() {
+  if (bdayRAF) { cancelAnimationFrame(bdayRAF); bdayRAF = null; }
+}
+function startBirthdayAnim() {
+  stopBirthdayAnim();
+  const cv = document.getElementById("bday-canvas");
+  if (!cv) return;
+  const ctx = cv.getContext("2d");
+  const COLORS = ["#fbbf24", "#3b82f6", "#34d399", "#f87171", "#f59e0b", "#a78bfa", "#f472b6", "#60a5fa"];
+  let W = 0, H = 0, dpr = 1, t = 0, parts = [], conf = [];
+  const rnd = (a, b) => a + Math.random() * (b - a);
+  function resize() {
+    dpr = Math.min(2, window.devicePixelRatio || 1);
+    const r = cv.getBoundingClientRect();
+    W = r.width; H = r.height; cv.width = W * dpr; cv.height = H * dpr;
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  }
+  resize();
+  function burst(x, y) {
+    const n = 44, base = COLORS[(Math.random() * COLORS.length) | 0];
+    for (let i = 0; i < n; i++) {
+      const a = (Math.PI * 2 * i) / n + rnd(-0.12, 0.12), sp = rnd(2, 5.4);
+      parts.push({ x, y, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp, life: 1, r: rnd(1.5, 3.2),
+        color: Math.random() < 0.55 ? base : COLORS[(Math.random() * COLORS.length) | 0] });
+    }
+  }
+  function mkConf(seed) {
+    return { x: rnd(0, W), y: seed ? rnd(0, H) : -12, vy: rnd(1, 2.6), vx: rnd(-0.7, 0.7),
+      rot: rnd(0, 6.28), vr: rnd(-0.12, 0.12), w: rnd(5, 10), h: rnd(7, 13), color: COLORS[(Math.random() * COLORS.length) | 0] };
+  }
+  for (let i = 0; i < 45; i++) conf.push(mkConf(true)); // pre-seed so it never looks empty
+  function frame() {
+    t++; ctx.clearRect(0, 0, W, H);
+    if (t % 36 === 0) burst(rnd(45, W - 45), rnd(55, H * 0.42));
+    if (t % 5 === 0 && conf.length < 140) conf.push(mkConf(false));
+    for (const p of parts) { p.vy += 0.05; p.vx *= 0.985; p.vy *= 0.985; p.x += p.vx; p.y += p.vy; p.life -= 0.0125; }
+    parts = parts.filter(p => p.life > 0);
+    for (const p of parts) { ctx.globalAlpha = Math.max(0, p.life); ctx.fillStyle = p.color; ctx.beginPath(); ctx.arc(p.x, p.y, p.r, 0, 7); ctx.fill(); }
+    ctx.globalAlpha = 1;
+    for (const c of conf) { c.y += c.vy; c.x += c.vx; c.rot += c.vr; ctx.save(); ctx.translate(c.x, c.y); ctx.rotate(c.rot); ctx.fillStyle = c.color; ctx.fillRect(-c.w / 2, -c.h / 2, c.w, c.h); ctx.restore(); }
+    conf = conf.filter(c => c.y < H + 24);
+    bdayRAF = requestAnimationFrame(frame);
+  }
+  function celebrate() { burst(W * 0.3, H * 0.27); burst(W * 0.7, H * 0.31); setTimeout(() => burst(W * 0.5, H * 0.2), 180); }
+  bdayRAF = requestAnimationFrame(frame);
+  celebrate();
 }
 
 // ---- matches tab -------------------------------------------------------------
@@ -459,6 +551,12 @@ document.addEventListener("click", (ev) => {
   if (!t) return;
 
   if (t.dataset.tab) { TAB = t.dataset.tab; render(); return; }
+  if (t.id === "bday-replay") {
+    const n = document.getElementById("bday-num");
+    if (n) { n.style.animation = "none"; void n.offsetWidth; n.style.animation = ""; }
+    startBirthdayAnim();
+    return;
+  }
   if (t.id === "profile-chip") { showProfileModal(false); return; }
   if (t.dataset.close != null) { $("#modal-root").innerHTML = ""; render(); return; }
   if (t.dataset.prof) { $("#modal-root").innerHTML = ""; selectProfile(t.dataset.prof); return; }

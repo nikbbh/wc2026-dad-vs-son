@@ -5,7 +5,18 @@
 
 let TAB = "matches";
 let ROUND_FILTER = "ALL";
-let scrolledToToday = false;
+let scrolledToCurrent = false;
+let FOCUS_MID = null; // id of the "current" match to scroll to on first open
+
+// The match worth jumping to: one in progress, else the next to kick off,
+// else the most recent (tournament over). `list` is sorted by date.
+function currentMatchId(list) {
+  const live = list.find(v => v.state === "in");
+  if (live) return live.id;
+  const next = list.find(v => !v.started);
+  if (next) return next.id;
+  return list.length ? list[list.length - 1].id : null;
+}
 
 const $ = (sel, el = document) => el.querySelector(sel);
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
@@ -54,10 +65,14 @@ function render() {
   else if (TAB === "score") view.innerHTML = renderScore(views);
   else view.innerHTML = renderRules();
 
-  if (TAB === "matches" && !scrolledToToday) {
-    scrolledToToday = true;
-    const today = document.getElementById("day-" + dayKey(new Date()));
-    if (today) setTimeout(() => today.scrollIntoView({ block: "start" }), 50);
+  if (TAB === "matches" && !scrolledToCurrent && FOCUS_MID) {
+    scrolledToCurrent = true;
+    const el = document.getElementById("match-" + FOCUS_MID);
+    if (el) setTimeout(() => {
+      el.scrollIntoView({ block: "start" });
+      el.classList.add("focus-flash");
+      setTimeout(() => el.classList.remove("focus-flash"), 1800);
+    }, 60);
   }
 }
 
@@ -69,6 +84,7 @@ function renderMatches(views) {
   PROJ = projectBracket(me());
   const rounds = ["ALL", "G1", "G2", "G3", "R32", "R16", "QF", "SF", "FIN"];
   const filtered = ROUND_FILTER === "ALL" ? views : views.filter(v => roundKey(v) === ROUND_FILTER);
+  FOCUS_MID = currentMatchId(filtered);
   const mine = State.pred[me()];
   const pickable = filtered.filter(v => !v.started && !v.isTBD);
   const done = pickable.filter(v => mine[v.id] != null).length;
@@ -175,7 +191,7 @@ function matchCard(v) {
   const fixBtn = u === "dad" && v.started && !v.isTBD
     ? `<button class="fix-link" data-fix="${v.id}">${v.overridden ? "✏️ corrected" : "✏️"}</button>` : "";
 
-  return `<div class="card ${live ? "card-live" : ""}">
+  return `<div class="card ${live ? "card-live" : ""}" id="match-${v.id}">
     <div class="card-top">
       <span class="chip">${stageChip}</span>
       <span class="detail">${live ? `<span class="live-dot"></span>` : ""}${esc(v.detail || (v.started ? "" : ""))}</span>
